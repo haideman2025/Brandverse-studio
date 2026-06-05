@@ -1,0 +1,21 @@
+name = "ldp-router"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Domain riêng để chạy link rút gọn, vd: go.domain-cua-ban.com
+# Sau khi add domain vào Cloudflare, bật route bên dưới (bỏ comment) & sửa lại.
+# routes = [
+#   { pattern = "go.domain-cua-ban.com/*", zone_name = "domain-cua-ban.com" }
+# ]
+
+# D1 database — tạo bằng: wrangler d1 create ldp_router
+# rồi dán database_id mà lệnh trả về vào đây.
+[[d1_databases]]
+binding = "DB"
+database_name = "ldp_router"
+database_id = "PASTE_DATABASE_ID_HERE"
+
+[vars]
+DEFAULT_UTM_SOURCE = "facebook"
+# ADMIN_TOKEN đặt bằng secret (không để lộ trong file):
+#   wrangler secret put ADMIN_TOKEN
