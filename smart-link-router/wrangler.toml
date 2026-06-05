@@ -11,7 +11,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "slr-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "9df503ce-3075-4060-aee9-cb3f18d48f80"
 
 # ---------------------------------------------------------------------------
 # Biến môi trường công khai (không bí mật). Sửa trực tiếp ở đây.
