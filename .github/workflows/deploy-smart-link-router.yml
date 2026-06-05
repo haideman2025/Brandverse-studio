@@ -5,22 +5,18 @@ name: Deploy Smart Link Router
 on:
   workflow_dispatch:
     inputs:
-      cf_api_token:
-        description: "Cloudflare API token (Workers Scripts:Edit + D1:Edit). Dùng 1 lần rồi roll lại."
-        required: true
-      cf_account_id:
-        description: "(Tùy chọn) Cloudflare Account ID nếu token thuộc nhiều account."
+      deploy_ref:
+        description: "Nhánh chứa code smart-link-router cần deploy."
         required: false
-        default: ""
+        default: "claude/fb-ads-dynamic-ab-testing-FyKjF"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Mask secrets in logs
-        run: echo "::add-mask::${{ inputs.cf_api_token }}"
-
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deploy_ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -33,6 +29,6 @@ jobs:
       - name: Deploy with Wrangler
         working-directory: smart-link-router
         env:
-          CLOUDFLARE_API_TOKEN: ${{ inputs.cf_api_token }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cf_account_id }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy
