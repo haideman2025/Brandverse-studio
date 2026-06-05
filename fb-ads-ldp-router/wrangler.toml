@@ -8,12 +8,12 @@ compatibility_date = "2024-11-01"
 #   { pattern = "go.domain-cua-ban.com/*", zone_name = "domain-cua-ban.com" }
 # ]
 
-# D1 database — tạo bằng: wrangler d1 create ldp_router
-# rồi dán database_id mà lệnh trả về vào đây.
+# D1 database — ĐÃ tạo & seed sẵn (database 'ldp_router', region APAC).
+# Bảng + campaign demo đã có sẵn, deploy là chạy được luôn.
 [[d1_databases]]
 binding = "DB"
 database_name = "ldp_router"
-database_id = "PASTE_DATABASE_ID_HERE"
+database_id = "8a48aa02-ecd6-4bc0-9db4-f500c80c4cdf"
 
 [vars]
 DEFAULT_UTM_SOURCE = "facebook"

@@ -21,26 +21,36 @@ FB Ad (1 post, 1 link: https://go.domain/r/serum-t6)
 
 ---
 
-## 1. Cài đặt & deploy (5 bước)
+## 1. Deploy (chỉ còn 3 lệnh — D1 đã tạo & seed sẵn)
+
+> ✅ D1 database `ldp_router` (id `8a48aa02-ecd6-4bc0-9db4-f500c80c4cdf`, region APAC) đã được
+> tạo sẵn, đã có bảng và 1 campaign demo `demo` với 3 LDP. `wrangler.toml` đã trỏ đúng id.
+> Vì deploy Worker cần đăng nhập Cloudflare của bạn nên 3 lệnh cuối bạn tự chạy trên máy:
 
 ```bash
 cd fb-ads-ldp-router
 npm install
-npx wrangler login
-
-# Tạo D1 database
-npx wrangler d1 create ldp_router
-# -> copy "database_id" mà lệnh in ra, dán vào wrangler.toml (chỗ PASTE_DATABASE_ID_HERE)
-
-# Tạo bảng + seed demo (chạy trên D1 thật)
-npm run db:init:remote
-
-# Đặt mật khẩu admin để xem báo cáo & cấu hình
-npx wrangler secret put ADMIN_TOKEN   # gõ 1 chuỗi bí mật bất kỳ
-
-# Deploy
-npm run deploy
+npx wrangler login                    # mở trình duyệt, đăng nhập Cloudflare của bạn
+npx wrangler secret put ADMIN_TOKEN   # gõ 1 chuỗi bí mật bất kỳ (để xem báo cáo)
+npm run deploy                        # -> in ra URL: https://ldp-router.<bạn>.workers.dev
 ```
+
+Xong là chạy được ngay. Thử liền:
+```bash
+# Mở link router vài lần -> mỗi lần có thể vào 1 LDP khác (xem JSON echo của httpbin)
+open https://ldp-router.<bạn>.workers.dev/r/demo
+
+# Xem báo cáo CR
+open "https://ldp-router.<bạn>.workers.dev/stats/demo?token=<ADMIN_TOKEN>"
+```
+
+<details><summary>Nếu muốn tự tạo D1 từ đầu (bỏ qua nếu dùng cái đã tạo sẵn)</summary>
+
+```bash
+npx wrangler d1 create ldp_router      # dán database_id vào wrangler.toml
+npm run db:init:remote                 # tạo bảng + seed demo
+```
+</details>
 
 Sau khi deploy, Worker chạy ở `https://ldp-router.<tài-khoản>.workers.dev`.
 👉 Khuyến nghị gắn **domain riêng** (vd `go.domain-cua-ban.com`) cho link đẹp + uy tín:
