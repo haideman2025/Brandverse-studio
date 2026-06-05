@@ -2,6 +2,8 @@ name = "smart-link-router"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
+# Account ID khai báo sẵn để token chỉ-Workers/D1 khỏi phải gọi /memberships (tránh lỗi auth).
+account_id = "cbe388803c391dc48be8cb4adc04423a"
 
 # ---------------------------------------------------------------------------
 # D1 database — nguồn dữ liệu chính (link, variant, click, conversion).
