@@ -19,6 +19,7 @@
 
 import { pickVariant, summarize, type LinkConfig, type VariantStat } from './bandit';
 import { renderDashboard } from './dashboard';
+import { ADMIN_HTML } from './admin';
 
 export interface Env {
   DB: D1Database;
@@ -75,17 +76,39 @@ export default {
         return handleDashboard(req, env, dashMatch[1]);
       }
 
-      // --- Admin: tạo/cập nhật link ---
+      // --- Giao diện quản trị (self-service) ---
+      if (method === 'GET' && (path === '/admin' || path === '/admin/')) {
+        return new Response(ADMIN_HTML, {
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        });
+      }
+
+      // --- Admin API ---
+      if (method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: corsHeaders(req) });
+      }
       if (method === 'POST' && path === '/api/links') {
         return handleUpsertLink(req, env);
       }
+      if (method === 'GET' && path === '/api/links') {
+        return handleListLinks(req, env);
+      }
       const linkMatch = path.match(/^\/api\/links\/([A-Za-z0-9_-]+)$/);
-      if (method === 'GET' && linkMatch) {
+      if (linkMatch && method === 'GET') {
         return handleGetLink(req, env, linkMatch[1]);
+      }
+      if (linkMatch && method === 'DELETE') {
+        return handleDeactivateLink(req, env, linkMatch[1]);
+      }
+      if (method === 'GET' && path === '/api/settings') {
+        return handleGetSettings(req, env);
+      }
+      if (method === 'POST' && path === '/api/settings') {
+        return handleSaveSettings(req, env);
       }
 
       if (path === '/' || path === '/health') {
-        return new Response(HELP_TEXT, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+        return Response.redirect(new URL('/admin', url).toString(), 302);
       }
 
       return json({ error: 'not_found', path }, 404);
@@ -315,9 +338,14 @@ async function forwardToMetaCAPI(
     body: Record<string, unknown>;
   },
 ): Promise<void> {
-  if (!env.META_PIXEL_ID || !env.META_CAPI_TOKEN) return;
+  // Pixel ID / CAPI token: ưu tiên secret Worker, nếu không có thì lấy từ DB
+  // (T cấu hình qua trang /admin).
+  const pixelId = env.META_PIXEL_ID || (await getSetting(env, 'meta_pixel_id'));
+  const capiToken = env.META_CAPI_TOKEN || (await getSetting(env, 'meta_capi_token'));
+  if (!pixelId || !capiToken) return;
 
-  const link = await getLinkConfig(env, p.slug);
+  const currency =
+    env.DEFAULT_CURRENCY || (await getSetting(env, 'default_currency')) || 'VND';
   const eventName = p.eventName || (await defaultEvent(env, p.slug)) || 'Lead';
 
   const userData: Record<string, unknown> = {};
@@ -343,7 +371,7 @@ async function forwardToMetaCAPI(
         user_data: userData,
         custom_data: {
           value: p.value || 0,
-          currency: env.DEFAULT_CURRENCY || 'VND',
+          currency,
           content_name: p.slug,
         },
       },
@@ -351,15 +379,14 @@ async function forwardToMetaCAPI(
   };
 
   const ver = env.FB_GRAPH_VERSION || 'v21.0';
-  const endpoint = `https://graph.facebook.com/${ver}/${env.META_PIXEL_ID}/events?access_token=${encodeURIComponent(
-    env.META_CAPI_TOKEN,
+  const endpoint = `https://graph.facebook.com/${ver}/${pixelId}/events?access_token=${encodeURIComponent(
+    capiToken,
   )}`;
   await fetch(endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  void link;
 }
 
 // =====================================================================
@@ -389,15 +416,18 @@ async function handleDashboard(req: Request, env: Env, slug: string): Promise<Re
 // ADMIN API
 // =====================================================================
 
-function checkAdmin(req: Request, env: Env): boolean {
-  if (!env.ADMIN_TOKEN) return false;
+async function checkAdmin(req: Request, env: Env): Promise<boolean> {
   const auth = req.headers.get('authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
-  return token === env.ADMIN_TOKEN;
+  if (!token) return false;
+  if (env.ADMIN_TOKEN && token === env.ADMIN_TOKEN) return true;
+  // Mật khẩu quản trị lưu trong DB (quản lý qua MCP / không cần secret Worker).
+  const stored = await getSetting(env, 'admin_token');
+  return !!stored && token === stored;
 }
 
 async function handleUpsertLink(req: Request, env: Env): Promise<Response> {
-  if (!checkAdmin(req, env)) return json({ error: 'unauthorized' }, 401);
+  if (!(await checkAdmin(req, env))) return json({ error: 'unauthorized' }, 401);
   const b = (await req.json().catch(() => null)) as any;
   if (!b || !b.slug || !Array.isArray(b.variants) || b.variants.length === 0) {
     return json(
@@ -455,11 +485,87 @@ async function handleUpsertLink(req: Request, env: Env): Promise<Response> {
 }
 
 async function handleGetLink(req: Request, env: Env, slug: string): Promise<Response> {
-  if (!checkAdmin(req, env)) return json({ error: 'unauthorized' }, 401);
+  if (!(await checkAdmin(req, env))) return json({ error: 'unauthorized' }, 401);
   const cfg = await getLinkConfig(env, slug);
   if (!cfg) return json({ error: 'not_found' }, 404);
   const variants = await getVariants(env, slug);
-  return json({ link: cfg, variants });
+  const origin = new URL(req.url).origin;
+  return json({ link: cfg, variants, ad_link: `${origin}/go/${slug}`, dashboard: `${origin}/dash/${slug}` });
+}
+
+// Danh sách tất cả chiến dịch + tổng quan (cho trang /admin).
+async function handleListLinks(req: Request, env: Env): Promise<Response> {
+  if (!(await checkAdmin(req, env))) return json({ error: 'unauthorized' }, 401);
+  const origin = new URL(req.url).origin;
+  const { results } = await env.DB.prepare(
+    `SELECT l.slug, l.name, l.mode, l.active,
+            COUNT(v.id) AS variants,
+            COALESCE(SUM(v.clicks),0) AS clicks,
+            COALESCE(SUM(v.conversions),0) AS conversions
+     FROM links l LEFT JOIN variants v ON v.slug = l.slug
+     GROUP BY l.slug
+     ORDER BY l.created_at DESC`,
+  ).all<{
+    slug: string;
+    name: string;
+    mode: string;
+    active: number;
+    variants: number;
+    clicks: number;
+    conversions: number;
+  }>();
+  const rows = (results ?? []).map((r) => ({
+    ...r,
+    active: r.active === 1,
+    cr: r.clicks > 0 ? +((r.conversions / r.clicks) * 100).toFixed(2) : 0,
+    ad_link: `${origin}/go/${r.slug}`,
+    dashboard: `${origin}/dash/${r.slug}`,
+  }));
+  return json({ links: rows });
+}
+
+// Tắt 1 chiến dịch (giữ nguyên số liệu).
+async function handleDeactivateLink(req: Request, env: Env, slug: string): Promise<Response> {
+  if (!(await checkAdmin(req, env))) return json({ error: 'unauthorized' }, 401);
+  await env.DB.prepare('UPDATE links SET active = 0 WHERE slug = ?').bind(slug).run();
+  return json({ ok: true, slug, active: false });
+}
+
+// Đọc cấu hình chung (Pixel/CAPI/tiền tệ) — che bớt token.
+async function handleGetSettings(req: Request, env: Env): Promise<Response> {
+  if (!(await checkAdmin(req, env))) return json({ error: 'unauthorized' }, 401);
+  const pixel = (await getSetting(env, 'meta_pixel_id')) || '';
+  const capi = (await getSetting(env, 'meta_capi_token')) || '';
+  const currency = (await getSetting(env, 'default_currency')) || env.DEFAULT_CURRENCY || 'VND';
+  return json({
+    meta_pixel_id: pixel,
+    capi_token_set: !!capi,
+    default_currency: currency,
+  });
+}
+
+// Lưu cấu hình chung.
+async function handleSaveSettings(req: Request, env: Env): Promise<Response> {
+  if (!(await checkAdmin(req, env))) return json({ error: 'unauthorized' }, 401);
+  const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const updates: Array<[string, string]> = [];
+  if (typeof b.meta_pixel_id === 'string') updates.push(['meta_pixel_id', b.meta_pixel_id.trim()]);
+  if (typeof b.meta_capi_token === 'string' && b.meta_capi_token.trim())
+    updates.push(['meta_capi_token', b.meta_capi_token.trim()]);
+  if (typeof b.default_currency === 'string' && b.default_currency.trim())
+    updates.push(['default_currency', b.default_currency.trim()]);
+  if (typeof b.admin_token === 'string' && b.admin_token.trim().length >= 6)
+    updates.push(['admin_token', b.admin_token.trim()]);
+
+  for (const [k, v] of updates) {
+    await env.DB.prepare(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+    )
+      .bind(k, v)
+      .run();
+  }
+  return json({ ok: true, saved: updates.map(([k]) => k) });
 }
 
 // =====================================================================
@@ -508,6 +614,13 @@ async function defaultEvent(env: Env, slug: string): Promise<string | null> {
   return r?.default_event ?? null;
 }
 
+async function getSetting(env: Env, key: string): Promise<string | null> {
+  const r = await env.DB.prepare('SELECT value FROM settings WHERE key = ?')
+    .bind(key)
+    .first<{ value: string }>();
+  return r?.value ?? null;
+}
+
 // =====================================================================
 // tiện ích
 // =====================================================================
@@ -530,7 +643,7 @@ function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('origin') || '*';
   return {
     'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'POST, GET, OPTIONS',
+    'access-control-allow-methods': 'POST, GET, DELETE, OPTIONS',
     'access-control-allow-headers': 'content-type',
   };
 }

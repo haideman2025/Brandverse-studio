@@ -52,3 +52,10 @@ CREATE TABLE IF NOT EXISTS events (
   meta        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_slug_ts ON events(slug, ts);
+
+-- Cấu hình chung (mật khẩu quản trị, Pixel/CAPI...) — quản lý qua /admin.
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
