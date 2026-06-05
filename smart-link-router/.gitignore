@@ -1,0 +1,6 @@
+node_modules
+.wrangler
+dist
+# Bí mật khi chạy local (wrangler tự đọc file này). KHÔNG commit.
+.dev.vars
+*.log

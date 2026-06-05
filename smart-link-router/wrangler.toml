@@ -1,0 +1,30 @@
+name = "smart-link-router"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# ---------------------------------------------------------------------------
+# D1 database — nguồn dữ liệu chính (link, variant, click, conversion).
+# Tạo bằng:  wrangler d1 create slr-db
+# Rồi dán database_id mà lệnh trên in ra vào dưới đây.
+# ---------------------------------------------------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "slr-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# ---------------------------------------------------------------------------
+# Biến môi trường công khai (không bí mật). Sửa trực tiếp ở đây.
+# ---------------------------------------------------------------------------
+[vars]
+# Múi giờ hiển thị trên dashboard (chỉ để cho vui, lưu trong DB luôn là UTC).
+DEFAULT_CURRENCY = "VND"
+# Phiên bản Graph API dùng cho Conversions API.
+FB_GRAPH_VERSION = "v21.0"
+
+# ---------------------------------------------------------------------------
+# BÍ MẬT — KHÔNG đặt ở đây. Set bằng lệnh `wrangler secret put <TÊN>`:
+#   wrangler secret put ADMIN_TOKEN      # token để gọi API quản trị (tạo/sửa link)
+#   wrangler secret put META_PIXEL_ID    # (tùy chọn) Pixel ID để bắn Conversions API
+#   wrangler secret put META_CAPI_TOKEN  # (tùy chọn) System User access token cho CAPI
+# ---------------------------------------------------------------------------
