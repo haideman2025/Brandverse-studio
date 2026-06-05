@@ -21,6 +21,9 @@ FB Ad (1 post, 1 link: https://go.domain/r/serum-t6)
 
 ---
 
+> 🤖 **Muốn push GitHub là tự deploy?** Xem [DEPLOY-CLOUDFLARE-GIT.md](./DEPLOY-CLOUDFLARE-GIT.md)
+> (nối repo vào Cloudflare Workers Builds — khỏi chạy lệnh deploy tay).
+
 ## 1. Deploy (chỉ còn 3 lệnh — D1 đã tạo & seed sẵn)
 
 > ✅ D1 database `ldp_router` (id `8a48aa02-ecd6-4bc0-9db4-f500c80c4cdf`, region APAC) đã được
