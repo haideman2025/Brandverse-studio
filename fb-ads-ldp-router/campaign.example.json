@@ -1,0 +1,15 @@
+{
+  "id": "serum-t6",
+  "name": "Serum tháng 6",
+  "mode": "bandit",
+  "min_explore": 30,
+  "sticky": true,
+  "utm_source": "facebook",
+  "variants": [
+    { "variant_id": "ldp_01", "label": "Bản review",      "url": "https://ladi.cua-ban.com/lp-review" },
+    { "variant_id": "ldp_02", "label": "Bản giảm giá",    "url": "https://ladi.cua-ban.com/lp-sale" },
+    { "variant_id": "ldp_03", "label": "Bản cam kết",     "url": "https://ladi.cua-ban.com/lp-guarantee" },
+    { "variant_id": "ldp_04", "label": "Bản so sánh",     "url": "https://ladi.cua-ban.com/lp-compare" },
+    { "variant_id": "ldp_05", "label": "Bản KOL",          "url": "https://ladi.cua-ban.com/lp-kol" }
+  ]
+}

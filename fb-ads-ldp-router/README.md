@@ -79,7 +79,17 @@ curl -X POST https://go.domain-cua-ban.com/admin/campaigns \
   }'
 ```
 
-Cách B — sửa `schema.sql` (phần seed) rồi `npm run db:init:remote`.
+Cách B — dùng script + file JSON (khuyên dùng cho 5–10 link, sửa/chạy lại dễ):
+
+```bash
+# Sửa link thật trong campaign.example.json rồi:
+WORKER_URL=https://ldp-router.<ban>.workers.dev \
+ADMIN_TOKEN=<token-cua-ban> \
+./load-campaign.sh campaign.example.json
+```
+Script in ra luôn link quảng cáo và link dashboard sau khi nạp.
+
+Cách C — sửa `schema.sql` (phần seed) rồi `npm run db:init:remote`.
 
 **`mode`:**
 - `bandit` *(mặc định)* — tự tối ưu: thăm dò đều cho tới khi mỗi LDP đủ `min_explore` click, rồi dồn dần về LDP CR cao.
@@ -134,6 +144,14 @@ curl -X POST https://go.domain-cua-ban.com/c/serum-t6 \
 
 ## 5. Xem báo cáo & chốt LDP thắng
 
+**Dashboard trực quan (HTML, có biểu đồ, tự refresh 20s):**
+```
+https://go.domain-cua-ban.com/dashboard/serum-t6?token=<ADMIN_TOKEN>
+```
+Mở không kèm token sẽ hiện ô nhập token. Dashboard hiển thị KPI tổng, LDP thắng (gắn 🏆),
+thanh CR từng LDP, % traffic đang nhận và doanh thu.
+
+**Hoặc JSON (để tích hợp/automation):**
 ```
 https://go.domain-cua-ban.com/stats/serum-t6?token=<ADMIN_TOKEN>
 ```
@@ -169,6 +187,7 @@ Trả về CR từng LDP, % traffic đang nhận, doanh thu, và **winner** hi�
 | GET | `/r/:campaign` | Link dán vào FB. Chọn LDP → 302 redirect. |
 | GET | `/c/:campaign` | Pixel chuyển đổi (1x1 gif). |
 | POST | `/c/:campaign` | Chuyển đổi server-side (`{cid, revenue}`). |
-| GET | `/stats/:campaign?token=` | Báo cáo CR + winner. |
+| GET | `/stats/:campaign?token=` | Báo cáo CR + winner (JSON). |
+| GET | `/dashboard/:campaign?token=` | Dashboard HTML trực quan. |
 | POST | `/admin/campaigns` | Tạo/sửa campaign + LDP (Bearer token). |
 | GET | `/healthz` | Health check. |

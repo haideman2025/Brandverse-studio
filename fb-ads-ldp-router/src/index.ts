@@ -9,7 +9,8 @@
  *   GET  /r/:campaign            Link để dán vào quảng cáo FB. Chọn LDP -> 302 redirect.
  *   GET  /c/:campaign            Pixel/postback ghi nhận chuyển đổi (1x1 gif).
  *   POST /c/:campaign            Ghi nhận chuyển đổi qua JSON (server-side, kèm revenue).
- *   GET  /stats/:campaign        Báo cáo CR từng LDP (?token=ADMIN_TOKEN).
+ *   GET  /stats/:campaign        Báo cáo CR từng LDP, JSON (?token=ADMIN_TOKEN).
+ *   GET  /dashboard/:campaign    Dashboard HTML trực quan (?token=ADMIN_TOKEN).
  *   POST /admin/campaigns        Tạo/cập nhật campaign + danh sách LDP (Bearer ADMIN_TOKEN).
  *   GET  /healthz                Health check.
  */
@@ -64,6 +65,7 @@ export default {
       if (root === 'r' && campaignId) return handleRedirect(req, env, ctx, campaignId);
       if (root === 'c' && campaignId) return handleConversion(req, env, ctx, campaignId);
       if (root === 'stats' && campaignId) return handleStats(req, env, campaignId);
+      if (root === 'dashboard' && campaignId) return handleDashboard(req, env, campaignId);
       if (root === 'admin' && parts[1] === 'campaigns') return handleAdminUpsert(req, env);
 
       return json({ error: 'not_found' }, 404);
@@ -160,18 +162,36 @@ async function handleConversion(
 /* ------------------------------------------------------------------ */
 /*  /stats/:campaign  — báo cáo                                        */
 /* ------------------------------------------------------------------ */
-async function handleStats(req: Request, env: Env, campaignId: string): Promise<Response> {
-  const url = new URL(req.url);
-  const token = url.searchParams.get('token') || bearer(req);
-  if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return json({ error: 'unauthorized' }, 401);
+interface StatRow {
+  variant_id: string;
+  label: string | null;
+  url: string;
+  active: boolean;
+  clicks: number;
+  conversions: number;
+  cr: number;
+  cr_pct: number;
+  revenue: number;
+  traffic_share_pct: number;
+}
 
+interface Stats {
+  campaign: { id: string; name: string | null; mode: string; min_explore: number };
+  total_clicks: number;
+  total_conversions: number;
+  winner: StatRow | null;
+  note: string;
+  variants: StatRow[];
+}
+
+async function computeStats(env: Env, campaignId: string): Promise<Stats | null> {
   const campaign = await getCampaign(env, campaignId);
-  if (!campaign) return json({ error: 'campaign_not_found' }, 404);
+  if (!campaign) return null;
 
   const variants = await getAllVariants(env, campaignId);
   const totalClicks = variants.reduce((s, v) => s + v.clicks, 0);
 
-  const rows = variants
+  const rows: StatRow[] = variants
     .map((v) => {
       const cr = v.clicks > 0 ? v.conversions / v.clicks : 0;
       return {
@@ -192,7 +212,7 @@ async function handleStats(req: Request, env: Env, campaignId: string): Promise<
   const ranked = rows.filter((r) => r.active && r.clicks >= campaign.min_explore);
   const winner = ranked.length ? ranked[0] : null;
 
-  return json({
+  return {
     campaign: { id: campaign.id, name: campaign.name, mode: campaign.mode, min_explore: campaign.min_explore },
     total_clicks: totalClicks,
     total_conversions: variants.reduce((s, v) => s + v.conversions, 0),
@@ -201,6 +221,135 @@ async function handleStats(req: Request, env: Env, campaignId: string): Promise<
       ? `LDP tốt nhất hiện tại: ${winner.variant_id} (CR ${winner.cr_pct}%).`
       : 'Chưa đủ dữ liệu để chốt (cần mỗi LDP đạt min_explore click).',
     variants: rows,
+  };
+}
+
+async function handleStats(req: Request, env: Env, campaignId: string): Promise<Response> {
+  const url = new URL(req.url);
+  const token = url.searchParams.get('token') || bearer(req);
+  if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return json({ error: 'unauthorized' }, 401);
+
+  const stats = await computeStats(env, campaignId);
+  if (!stats) return json({ error: 'campaign_not_found' }, 404);
+  return json(stats);
+}
+
+/* ------------------------------------------------------------------ */
+/*  /dashboard/:campaign  — báo cáo HTML trực quan                     */
+/* ------------------------------------------------------------------ */
+async function handleDashboard(req: Request, env: Env, campaignId: string): Promise<Response> {
+  const url = new URL(req.url);
+  const token = url.searchParams.get('token') || bearer(req);
+  if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) {
+    return html(loginPage(campaignId), 401);
+  }
+  const stats = await computeStats(env, campaignId);
+  if (!stats) return html(`<p style="color:#fff;font-family:sans-serif">campaign_not_found</p>`, 404);
+  return html(dashboardPage(stats, token));
+}
+
+function dashboardPage(s: Stats, token: string): string {
+  const best = s.variants.reduce((m, v) => Math.max(m, v.cr_pct), 0) || 1;
+  const winId = s.winner?.variant_id;
+
+  const cards = s.variants
+    .map((v) => {
+      const isWin = v.variant_id === winId;
+      const crBar = Math.min(100, (v.cr_pct / best) * 100);
+      const color = isWin ? '#22c55e' : v.active ? '#3b82f6' : '#6b7280';
+      return `
+      <tr class="${isWin ? 'win' : ''} ${v.active ? '' : 'off'}">
+        <td>
+          <div class="vid">${esc(v.variant_id)} ${isWin ? '<span class="badge">🏆 WIN</span>' : ''} ${v.active ? '' : '<span class="badge off">tắt</span>'}</div>
+          <div class="label">${esc(v.label ?? '')}</div>
+          <a class="url" href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.url)}</a>
+        </td>
+        <td class="num">${v.clicks.toLocaleString()}</td>
+        <td class="num">${v.conversions.toLocaleString()}</td>
+        <td class="num strong" style="color:${color}">${v.cr_pct}%</td>
+        <td class="barcell">
+          <div class="bar"><span style="width:${crBar}%;background:${color}"></span></div>
+        </td>
+        <td class="num">${v.traffic_share_pct}%</td>
+        <td class="num">${v.revenue ? v.revenue.toLocaleString() : '-'}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `<!doctype html><html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="20">
+<title>LDP A/B • ${esc(s.campaign.id)}</title>
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{margin:0;background:#0b0f17;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:20px;margin:0 0 2px} .sub{color:#94a3b8;font-size:13px;margin-bottom:20px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .kpi{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:14px}
+  .kpi .v{font-size:22px;font-weight:700} .kpi .k{color:#94a3b8;font-size:12px;margin-top:2px}
+  .note{background:#0f1d12;border:1px solid #1d4a2a;color:#86efac;border-radius:12px;padding:12px 14px;font-size:14px;margin-bottom:18px}
+  .note.wait{background:#1d1a0f;border-color:#4a3f1d;color:#fde68a}
+  table{width:100%;border-collapse:collapse;background:#111827;border:1px solid #1f2937;border-radius:12px;overflow:hidden}
+  th,td{padding:12px 12px;text-align:left;border-bottom:1px solid #1f2937;font-size:14px;vertical-align:top}
+  th{color:#94a3b8;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  td.num{text-align:right;white-space:nowrap} td.strong{font-weight:700}
+  tr.win td{background:#0e1a10} tr.off{opacity:.5}
+  .vid{font-weight:700;font-size:15px} .label{color:#94a3b8;font-size:12px;margin:2px 0}
+  .url{color:#60a5fa;font-size:11px;text-decoration:none;word-break:break-all} .url:hover{text-decoration:underline}
+  .badge{font-size:10px;background:#14532d;color:#86efac;padding:2px 6px;border-radius:6px;vertical-align:middle}
+  .badge.off{background:#374151;color:#cbd5e1}
+  .barcell{width:160px} .bar{background:#1f2937;border-radius:6px;height:10px;overflow:hidden}
+  .bar span{display:block;height:100%;border-radius:6px}
+  .foot{color:#64748b;font-size:12px;margin-top:16px}
+  .foot code{background:#111827;padding:2px 6px;border-radius:6px;border:1px solid #1f2937}
+</style></head><body><div class="wrap">
+  <h1>🎯 ${esc(s.campaign.name ?? s.campaign.id)}</h1>
+  <div class="sub">campaign <code>${esc(s.campaign.id)}</code> • chế độ <b>${esc(s.campaign.mode)}</b> • min_explore ${s.campaign.min_explore} • tự refresh 20s</div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">${s.total_clicks.toLocaleString()}</div><div class="k">Tổng click</div></div>
+    <div class="kpi"><div class="v">${s.total_conversions.toLocaleString()}</div><div class="k">Tổng chuyển đổi</div></div>
+    <div class="kpi"><div class="v">${s.total_clicks ? round((s.total_conversions / s.total_clicks) * 100, 2) : 0}%</div><div class="k">CR trung bình</div></div>
+    <div class="kpi"><div class="v">${s.winner ? esc(s.winner.variant_id) : '—'}</div><div class="k">LDP thắng</div></div>
+  </div>
+
+  <div class="note ${s.winner ? '' : 'wait'}">${esc(s.note)}</div>
+
+  <table>
+    <thead><tr>
+      <th>Landing page</th><th class="num">Click</th><th class="num">Conv</th>
+      <th class="num">CR</th><th>CR (bar)</th><th class="num">% traffic</th><th class="num">Doanh thu</th>
+    </tr></thead>
+    <tbody>${cards || '<tr><td colspan="7" style="color:#94a3b8">Chưa có LDP nào</td></tr>'}</tbody>
+  </table>
+
+  <div class="foot">JSON: <code>/stats/${esc(s.campaign.id)}?token=…</code> • Link quảng cáo: <code>/r/${esc(s.campaign.id)}</code></div>
+</div></body></html>`;
+}
+
+function loginPage(campaignId: string): string {
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Đăng nhập</title>
+<style>body{margin:0;background:#0b0f17;color:#e5e7eb;font-family:system-ui,sans-serif;display:grid;place-items:center;height:100vh}
+.box{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;width:320px;max-width:90vw}
+input{width:100%;padding:10px;margin:10px 0;border-radius:8px;border:1px solid #374151;background:#0b0f17;color:#fff}
+button{width:100%;padding:10px;border:0;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer}
+h2{margin:0 0 4px;font-size:18px}.s{color:#94a3b8;font-size:13px}</style></head><body>
+<form class="box" onsubmit="location.href='/dashboard/${esc(campaignId)}?token='+encodeURIComponent(t.value);return false">
+<h2>🔒 Dashboard A/B</h2><div class="s">Nhập ADMIN_TOKEN để xem campaign <b>${esc(campaignId)}</b></div>
+<input id="t" type="password" placeholder="ADMIN_TOKEN" autofocus><button>Xem báo cáo</button></form></body></html>`;
+}
+
+function esc(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+}
+
+function html(body: string, status = 200): Response {
+  return new Response(body, {
+    status,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
   });
 }
 
