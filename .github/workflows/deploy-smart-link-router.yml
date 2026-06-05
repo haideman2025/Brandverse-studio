@@ -3,6 +3,12 @@ name: Deploy Smart Link Router
 # Deploy thủ công Cloudflare Worker `smart-link-router`.
 # Chạy trên hạ tầng GitHub nên không dính network allowlist của môi trường dev.
 on:
+  push:
+    branches:
+      - claude/fb-ads-dynamic-ab-testing-FyKjF
+    paths:
+      - 'smart-link-router/**'
+      - '.github/workflows/deploy-smart-link-router.yml'
   workflow_dispatch:
     inputs:
       deploy_ref:
@@ -16,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.deploy_ref }}
+          ref: ${{ inputs.deploy_ref || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
