@@ -1,0 +1,44 @@
+name: Deploy Smart Link Router
+
+# Deploy thủ công Cloudflare Worker `smart-link-router`.
+# Chạy trên hạ tầng GitHub nên không dính network allowlist của môi trường dev.
+on:
+  workflow_dispatch:
+    inputs:
+      cf_api_token:
+        description: "Cloudflare API token (Workers Scripts:Edit + D1:Edit). Dùng 1 lần rồi roll lại."
+        required: true
+      cf_account_id:
+        description: "(Tùy chọn) Cloudflare Account ID nếu token thuộc nhiều account."
+        required: false
+        default: ""
+      deploy_ref:
+        description: "Nhánh chứa code smart-link-router cần deploy."
+        required: false
+        default: "claude/fb-ads-dynamic-ab-testing-FyKjF"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mask secrets in logs
+        run: echo "::add-mask::${{ inputs.cf_api_token }}"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deploy_ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: smart-link-router
+        run: npm ci || npm install
+
+      - name: Deploy with Wrangler
+        working-directory: smart-link-router
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ inputs.cf_api_token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cf_account_id }}
+        run: npx wrangler deploy
