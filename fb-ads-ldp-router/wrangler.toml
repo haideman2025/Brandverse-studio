@@ -1,0 +1,21 @@
+name = "ldp-router"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Domain riêng để chạy link rút gọn, vd: go.domain-cua-ban.com
+# Sau khi add domain vào Cloudflare, bật route bên dưới (bỏ comment) & sửa lại.
+# routes = [
+#   { pattern = "go.domain-cua-ban.com/*", zone_name = "domain-cua-ban.com" }
+# ]
+
+# D1 database — ĐÃ tạo & seed sẵn (database 'ldp_router', region APAC).
+# Bảng + campaign demo đã có sẵn, deploy là chạy được luôn.
+[[d1_databases]]
+binding = "DB"
+database_name = "ldp_router"
+database_id = "8a48aa02-ecd6-4bc0-9db4-f500c80c4cdf"
+
+[vars]
+DEFAULT_UTM_SOURCE = "facebook"
+# ADMIN_TOKEN đặt bằng secret (không để lộ trong file):
+#   wrangler secret put ADMIN_TOKEN
