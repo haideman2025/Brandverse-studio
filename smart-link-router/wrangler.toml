@@ -9,6 +9,7 @@ account_id = "cbe388803c391dc48be8cb4adc04423a"
 # khi deploy (zone quatangnamgioi.vn phải đã Active trên cùng account).
 routes = [
   { pattern = "go.quatangnamgioi.vn", custom_domain = true },
+  { pattern = "link.quatangnamgioi.vn", custom_domain = true },
 ]
 
 # ---------------------------------------------------------------------------
