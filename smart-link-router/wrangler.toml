@@ -2,6 +2,8 @@ name = "smart-link-router"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
+# Giữ link *.workers.dev luôn bật để có URL dự phòng ngoài custom domain.
+workers_dev = true
 # Account ID khai báo sẵn để token chỉ-Workers/D1 khỏi phải gọi /memberships (tránh lỗi auth).
 account_id = "cbe388803c391dc48be8cb4adc04423a"
 
